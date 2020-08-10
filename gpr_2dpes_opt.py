@@ -37,7 +37,7 @@ plot_XY =  np.array([plot_X.ravel(), plot_Y.ravel()]).T
 # print (plot_Y)
 # print (plot_XY)
 
-pred_mu, pred_sigma = gpr.predict(plot_XY, return_std=True) # posterior average
+pred_mu, pred_sigma = gpr.predict(plot_XY, return_std=True) 
 pred_mu = scaler_y.inverse_transform(pred_mu)
 pred_sigma = pred_sigma.reshape(-1, 1) * scaler_y.scale_
 # print (pred_mu, pred_sigma)
