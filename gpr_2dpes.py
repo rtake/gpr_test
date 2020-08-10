@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 
 # ndata = 10
 
-csv_file = open("./h2_2d.csv", "r")
+csv_file = open("./h2o_2d_1000.csv", "r")
 reader = csv.reader(csv_file)
 reader_np = np.array(list(reader))
 
@@ -26,8 +26,8 @@ gpr.fit(X, scaler_y.transform(y))
 # print(gpr.kernel_)
 
 gridnum = 100;
-xlim = [-3,3]
-ylim = [-3,3]
+xlim = [0,5]
+ylim = [0,5]
 x = np.arange(xlim[0], xlim[1], (xlim[1]-xlim[0])/gridnum)
 y = np.arange(ylim[0], ylim[1], (ylim[1]-ylim[0])/gridnum)
 plot_X, plot_Y = np.meshgrid(x,y)
@@ -49,8 +49,8 @@ pred_sigma = pred_sigma.reshape(-1, 1) * scaler_y.scale_
 
 # For plot
 fig = plt.figure(figsize=(8, 6))
-plt.xlabel('$x$', fontsize=16)
-plt.ylabel('$y$', fontsize=16)
+plt.xlabel('$x0$', fontsize=16)
+plt.ylabel('$x1$', fontsize=16)
 # plt.xlim(xlim)
 # plt.ylim(ylim)
 plt.tick_params(labelsize=16)
