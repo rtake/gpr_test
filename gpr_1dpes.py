@@ -21,6 +21,11 @@ scaler_y = StandardScaler().fit(y)
 kernel = ConstantKernel() * RBF() + WhiteKernel() 
 gpr = GaussianProcessRegressor(kernel=kernel, alpha=0) 
 gpr.fit(X, scaler_y.transform(y))
+
+params = kernel.get_params()
+for key in sorted(params) : print("%s : %s" % (key, params[key]))
+print (kernel.theta)
+
 # print(gpr.kernel_)
 
 plot_X = np.atleast_2d(np.linspace(0, 5, 1000)).T
