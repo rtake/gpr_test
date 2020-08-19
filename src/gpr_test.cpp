@@ -59,7 +59,7 @@ void GaussianProcessRegressor_MakeKernelMatrix(GaussianProcessRegressor *gpr) {
 double GaussianProcessRegressor_LogMarginalLikelihood(GaussianProcessRegressor *gpr) {
   VectorXd y = Map<VectorXd>(gpr->y, gpr->ndat); 
   MatrixXd K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], gpr->ndat, gpr->ndat);
-  double lml=0, pi=acos(-1);
+  double lml_0, lml_1, lml_2, pi=acos(-1);
 
   /*
   LLT<MatrixXd> lltofK(K);
@@ -67,15 +67,23 @@ double GaussianProcessRegressor_LogMarginalLikelihood(GaussianProcessRegressor *
   VectroXd alpha = 
   */
 
-  lml += -0.5*(y.transpose())*(K.inverse())*y;
-  lml += -0.5*log(K.determinant()); // ok
-  lml += -0.5*gpr->ndat*log(2*pi); // ok
-  return lml;
+  lml_0 = -0.5*(y.transpose())*(K.inverse())*y; // here
+  lml_1 = -0.5*log(K.determinant()); // ok
+  lml_2 = -0.5*gpr->ndat*log(2*pi); // ok
+  
+  /*
+  cout << "y.transpose()" << endl << y.transpose() << endl;
+  cout << "K.inverse()" << endl << K.inverse() << endl;
+  cout << "y" << endl << y << endl;
+  printf("LML : %lf, %lf, %lf\n", lml_0, lml_1, lml_2);
+  */
+ 
+  return lml_0 + lml_1 + lml_2;
 }
 
 
 void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
-  int maxcycle=1000, converged=0, n=gpr->ndat, dim=gpr->dim, nparam=gpr->nparam;
+  int maxcycle=10, converged=0, n=gpr->ndat, dim=gpr->dim, nparam=gpr->nparam;
   double alpha=0.01;
   
   if(gpr->kerneltype == 0) {
@@ -164,8 +172,10 @@ void GaussianProcessRegressor_StandardScaler(GaussianProcessRegressor *gpr) {
   for(int i=0;i<n;i++) { y_mean += gpr->y[i]; }
   y_mean /= n;
   for(int i=0;i<n;i++) { y_var += (gpr->y[i]-y_mean)*(gpr->y[i]-y_mean); }
-  y_var = sqrt(y_var);
-  for(int i=0;i<n;i++) { gpr->y[i] = (gpr->y[i]-y_mean)/y_var; }
+  y_var = y_var/n;
+  for(int i=0;i<n;i++) { gpr->y[i] = (gpr->y[i]-y_mean)/sqrt(y_var); }
+
+  // printf("mean : %lf, var : %lf\n", y_mean, y_var);
 }
 
 
@@ -260,8 +270,18 @@ int main(void) {
   }
 
   /* Scaling training data */
-  GaussianProcessRegressor_StandardScaler(gpr);
+  /*
+  for(int i=0;i<gpr->ndat;i++) { printf("%lf,", gpr->y[i]); }
+  cout << endl;  
+  */
 
+  GaussianProcessRegressor_StandardScaler(gpr);
+  
+  /*
+  for(int i=0;i<gpr->ndat;i++) { printf("%lf,", gpr->y[i]); }
+  cout << endl;
+  */  
+  
   if(gpr->kerneltype == 0) {
     /*
     Kernel_0 *k_0;
@@ -284,15 +304,15 @@ int main(void) {
     gpr->theta[1] = 1;
 
     GaussianProcessRegressor_fit(gpr);
-    printf("%lf, %lf\n", gpr->theta[0], gpr->theta[1]);
+    printf("%lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1]));
 
     FILE *fp = fopen("lml.csv", "w");
 
-    for(double i=-5.0;i<=5.0;i += 0.1) {
-      for(double j=-5.0;j<=5.0;j += 0.1) {
+    for(double i=-5;i<=5;i+=0.1) {
+      for(double j=-5;j<=5;j+=0.1) {
         GaussianProcessRegressor gpr0 = *gpr;
-        gpr0.theta[0] = j; // x
-        gpr0.theta[1] = i; // y
+        gpr0.theta[0] = exp(j); // x
+        gpr0.theta[1] = exp(i); // y
         GaussianProcessRegressor_MakeKernelMatrix(&gpr0);
         fprintf(fp,"%lf,%lf,%lf\n", j, i, GaussianProcessRegressor_LogMarginalLikelihood(&gpr0));
       } 
