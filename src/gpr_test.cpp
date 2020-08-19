@@ -25,6 +25,12 @@ typedef struct GaussianProcessRegressor {
   kerneltype == 0  ->  ConstantKernel() * RBF() + WhiteKernel(), nparam = 3
   kerneltype == 1  ->  ConstantKernel() * RBF(), nparam = 2
   */
+
+  /* for prediction */
+  int npred;
+  double **test;
+  double *mu; // 
+  double *var;
 } GaussianProcessRegressor;
 
 
@@ -211,15 +217,48 @@ void GaussianProcessRegressor_Free(GaussianProcessRegressor *gpr) {
 }
 
 
+void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr) {
+  MatrixXd K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], gpr->ndat, gpr->ndat);
+  VectorXd k, y = Map<VectorXd>(gpr->y, gpr->ndat);
+  double k_self;
+
+  if(gpr->kerneltype == 0) {
+
+    for(int i=0;i<gpr->npred;i++) {
+      for(int j=0;j<gpr->ndat;j++) { k[j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->x[j]) + gpr->theta[2]; }
+      K_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
+      gpr->mu[i] = (k.transpose())*(K.inverse())*y;
+      gpr->var[i] = s - (k.transpose())*(K.inverse())*k;
+    }
+
+  } else if(gpr->kerneltype == 1) {
+
+    for(int i=0;i<gpr->npred;i++) {
+      for(int j=0;j<gpr->ndat;j++) { k[j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->x[j]); }
+      k_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
+      gpr->mu[i] = (k.transpose())*(K.inverse())*y;
+      gpr->var[i] = s - (k.transpose())*(K.inverse())*k;
+    }
+
+  }
+
+}  
+
+
 int main(void) {
+  int dim, ndat, kerneltype=1;
   double theta[10];
+  char line[256];
+  FILE *fp;
+
   GaussianProcessRegressor *gpr;
   gpr = (GaussianProcessRegressor*)malloc(sizeof(GaussianProcessRegressor));
 
+
   /* Initialize GPR */
-  gpr->dim = 1;
-  gpr->ndat = 10;
-  gpr->kerneltype = 1;
+  gpr->dim = dim;
+  gpr->ndat = ndat;
+  gpr->kerneltype = kerneltype;
   GaussianProcessRegressor_Malloc(gpr); 
 
 
@@ -233,6 +272,7 @@ int main(void) {
   /* Scaling training data */
   GaussianProcessRegressor_StandardScaler(gpr);
   
+
   if(gpr->kerneltype == 0) {
     /* set parameters for kernel */
     gpr->nparam = 3;
@@ -265,7 +305,7 @@ int main(void) {
     
 
     /* output */
-    FILE *fp = fopen("lml.csv", "w");
+    fp = fopen("lml.csv", "w");
     for(double i=-5;i<=5;i+=0.1) {
       for(double j=-5;j<=5;j+=0.1) {
         GaussianProcessRegressor gpr0 = *gpr;
@@ -275,6 +315,7 @@ int main(void) {
         fprintf(fp,"%lf,%lf,%lf\n", j, i, GaussianProcessRegressor_LogMarginalLikelihood(&gpr0));
       } 
     }
+    fclose(fp);
 
     printf("%lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optinum parameters
 
