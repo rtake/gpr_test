@@ -17,7 +17,9 @@ print(x,y,z)
 
 fig = plt.figure()
 
-plt.contour(x,y,z, 100)
+cont = plt.contour(x,y,z, levels=50)
+cont.clabel(fmt='%1.1f', fontsize=8)
+plt.colorbar()
 
 
 """
