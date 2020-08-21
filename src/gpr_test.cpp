@@ -16,7 +16,7 @@ typedef struct GaussianProcessRegressor {
   double *y; // y[ndat]
   double **K; // Kernel Matrix
   double **K_derivative;
-  double sigma;
+  double alpha;
 
   int kerneltype;
   int nparam; // number of parameter
@@ -25,12 +25,16 @@ typedef struct GaussianProcessRegressor {
   kerneltype == 0  ->  ConstantKernel() * RBF() + WhiteKernel(), nparam = 3
   kerneltype == 1  ->  ConstantKernel() * RBF(), nparam = 2
   */
+   
+  /* For scaling (GaussianProcessRegressor_StandardScaler) */
+  double mu_train; // 
+  double sigma_train; // 
 
   /* for prediction */
   int npred;
   double **test;
-  double *mu; // 
-  double *var;
+  double *mu_pred; // 
+  double *sigma_pred;
 } GaussianProcessRegressor;
 
 
@@ -57,7 +61,7 @@ void GaussianProcessRegressor_MakeKernelMatrix(GaussianProcessRegressor *gpr) {
       else if(gpr->kerneltype == 1) { gpr->K[i][j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->x[i], gpr->x[j]); }
 
       /* for diagonal elements */
-      if(i == j) { gpr->K[i][j] += gpr->sigma * gpr->sigma; }
+      if(i == j) { gpr->K[i][j] += gpr->alpha * gpr->alpha; }
     }
   }
 }
@@ -182,7 +186,7 @@ void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
 
 
 void GaussianProcessRegressor_Malloc(GaussianProcessRegressor *gpr) {
-  int n=gpr->ndat, m=gpr->dim;
+  int n=gpr->ndat, m=gpr->dim, t=gpr->npred;
 
   gpr->x = (double**)malloc(sizeof(double*)*n);
   gpr->x[0] = (double*)malloc(sizeof(double)*n*m); 
@@ -193,20 +197,42 @@ void GaussianProcessRegressor_Malloc(GaussianProcessRegressor *gpr) {
   gpr->K = (double**)malloc(sizeof(double*)*n);
   gpr->K[0] = (double*)malloc(sizeof(double*)*n*n);
   for(int i=0;i<n;i++) { gpr->K[i] = gpr->K[0] + i*n; }
+
+  gpr->test = (double**)malloc(sizeof(double*)*t);
+  gpr->test[0] = (double*)malloc(sizeof(double)*t*m);
+  for(int i=0;i<t;i++) { gpr->test[i] = gpr->test[0] + i*m; }
+
+  gpr->mu_pred = (double*)malloc(sizeof(double)*t);
+  gpr->sigma_pred = (double*)malloc(sizeof(double)*t);
 }
 
 
-void GaussianProcessRegressor_StandardScaler(GaussianProcessRegressor *gpr) {
+void GaussianProcessRegressor_StandardScaler(GaussianProcessRegressor *gpr, int key) {
   int n=gpr->ndat;
-  double y_mean=0, y_var=0;
 
-  for(int i=0;i<n;i++) { y_mean += gpr->y[i]; }
-  y_mean /= n;
-  for(int i=0;i<n;i++) { y_var += (gpr->y[i]-y_mean)*(gpr->y[i]-y_mean); }
-  y_var = y_var/n;
-  for(int i=0;i<n;i++) { gpr->y[i] = (gpr->y[i]-y_mean)/sqrt(y_var); }
+  if(key == 1) {
+    /* Standarization for training data */
+    double y_mean=0, y_var=0;
 
-  // printf("mean : %lf, var : %lf\n", y_mean, y_var);
+    for(int i=0;i<n;i++) { y_mean += gpr->y[i]; }
+    y_mean /= n;
+    
+    for(int i=0;i<n;i++) { y_var += (gpr->y[i]-y_mean)*(gpr->y[i]-y_mean); }
+    y_var = y_var/n;
+
+    for(int i=0;i<n;i++) { gpr->y[i] = (gpr->y[i]-y_mean)/sqrt(y_var); }
+    
+    gpr->mu_train = y_mean;
+    gpr->sigma_train = sqrt(y_var);
+  } else if(key == -1) {
+    /* Scale back the data to the original representation */
+
+    for(int i=0;i<gpr->npred;i++) {
+      gpr->mu_pred[i] = gpr->mu_pred[i] * gpr->sigma_train + gpr->mu_train;
+      gpr->sigma_pred[i] = gpr->sigma_pred[i] * gpr->sigma_train;
+    }
+  }
+
 }
 
 
@@ -214,30 +240,33 @@ void GaussianProcessRegressor_Free(GaussianProcessRegressor *gpr) {
   free(gpr->x);
   free(gpr->y);
   free(gpr->K);
+  free(gpr->test);
+  free(gpr->mu_pred);
+  free(gpr->sigma_pred);
 }
 
 
 void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr) {
   MatrixXd K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], gpr->ndat, gpr->ndat);
-  VectorXd k, y = Map<VectorXd>(gpr->y, gpr->ndat);
+  VectorXd k(gpr->ndat), y = Map<VectorXd>(gpr->y, gpr->ndat);
   double k_self;
 
   if(gpr->kerneltype == 0) {
-
+    /*
     for(int i=0;i<gpr->npred;i++) {
       for(int j=0;j<gpr->ndat;j++) { k[j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->x[j]) + gpr->theta[2]; }
       K_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
       gpr->mu[i] = (k.transpose())*(K.inverse())*y;
       gpr->var[i] = s - (k.transpose())*(K.inverse())*k;
     }
-
+    */
   } else if(gpr->kerneltype == 1) {
 
     for(int i=0;i<gpr->npred;i++) {
       for(int j=0;j<gpr->ndat;j++) { k[j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->x[j]); }
       k_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
-      gpr->mu[i] = (k.transpose())*(K.inverse())*y;
-      gpr->var[i] = s - (k.transpose())*(K.inverse())*k;
+      gpr->mu_pred[i] = (k.transpose())*(K.inverse())*y;
+      gpr->sigma_pred[i] = k_self - (k.transpose())*(K.inverse())*k;
     }
 
   }
@@ -246,7 +275,7 @@ void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr) {
 
 
 int main(void) {
-  int dim, ndat, kerneltype=1;
+  int dim=1, ndat=10, kerneltype=1, ntest=10;
   double theta[10];
   char line[256];
   FILE *fp;
@@ -259,6 +288,7 @@ int main(void) {
   gpr->dim = dim;
   gpr->ndat = ndat;
   gpr->kerneltype = kerneltype;
+  gpr->npred = ntest;
   GaussianProcessRegressor_Malloc(gpr); 
 
 
@@ -269,8 +299,12 @@ int main(void) {
   }
 
 
+  /* Make test data */
+  for(int i=0;i<gpr->npred;i++) { gpr->test[i][0] = (double)i+0.5; }
+
+
   /* Scaling training data */
-  GaussianProcessRegressor_StandardScaler(gpr);
+  GaussianProcessRegressor_StandardScaler(gpr,1);
   
 
   if(gpr->kerneltype == 0) {
@@ -280,7 +314,7 @@ int main(void) {
     gpr->theta[0] = 1;
     gpr->theta[1] = 1;
     gpr->theta[2] = 1;
-    gpr->sigma = 0;
+    gpr->alpha = 0;
 
 
     /* Optimize hyper-parameters */
@@ -294,17 +328,22 @@ int main(void) {
 
     /* set parameters for kernel */
     gpr->nparam = 2;
-    gpr->theta = &theta[0];
+    gpr->theta = theta;
     gpr->theta[0] = 1;
     gpr->theta[1] = 1;
-    gpr->sigma = 0.1;
+    gpr->alpha = 0.1;
 
 
     /* Optimize hyper-parameters */
     GaussianProcessRegressor_fit(gpr);
+
+
+    /* Predict mu and sigma for test data */
+    GaussianProcessRegressor_predict(gpr);
     
 
     /* output */
+    /*
     fp = fopen("lml.csv", "w");
     for(double i=-5;i<=5;i+=0.1) {
       for(double j=-5;j<=5;j+=0.1) {
@@ -316,9 +355,12 @@ int main(void) {
       } 
     }
     fclose(fp);
+    */
 
-    printf("%lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optinum parameters
+    printf("Optimum hyperparameters : %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optimum parameters
 
+    for(int i=0;i<gpr->ndat;i++) { printf("%lf, %lf\n", gpr->x[i][0], gpr->y[i]); }
+    for(int i=0;i<gpr->npred;i++) { printf("%lf, %lf, %lf\n", gpr->test[i][0], gpr->mu_pred[i], gpr->sigma_pred[i]); }
   }
 
   GaussianProcessRegressor_Free(gpr);
