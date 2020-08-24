@@ -1,0 +1,3 @@
+kernel=RBF // kerneltype
+training=./train.dat // trainig data
+test=./test.dat // test data

@@ -37,7 +37,7 @@ y = np.sin(X)
 scaler_y = StandardScaler().fit(y)
 
 plt.figure()
-mod kernel = 1 * RBF(length_scale=1, length_scale_bounds=(1e-2, 1e3)) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-10, 1e+1))
+kernel = 1 * RBF(length_scale=1, length_scale_bounds=(1e-2, 1e3)) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-10, 1e+1))
 # kernel = np.exp(2) * RBF(length_scale=np.exp(2), length_scale_bounds=(1e-2, 1e3))# + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-10, 1e+1))
 gp = GaussianProcessRegressor(kernel=kernel, alpha=0.01).fit(X, scaler_y.transform(y))
 X_ = np.linspace(0, 10, 100)
