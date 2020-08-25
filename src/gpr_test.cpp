@@ -188,11 +188,15 @@ void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
 void GaussianProcessRegressor_Malloc(GaussianProcessRegressor *gpr) {
   int n=gpr->ndat, m=gpr->dim, t=gpr->npred;
 
+  gpr->theta = (double*)malloc(sizeof(double)*gpr->nparam);
+
   gpr->x = (double**)malloc(sizeof(double*)*n);
   gpr->x[0] = (double*)malloc(sizeof(double)*n*m); 
   for(int i=0;i<n;i++) { gpr->x[i] = gpr->x[0] + i*m; }
 
   gpr->y = (double*)malloc(sizeof(double)*n);
+  // free(gpr->y);
+  printf("gpr->y : %p, size : %d\n", gpr->y, n);
 
   gpr->K = (double**)malloc(sizeof(double*)*n);
   gpr->K[0] = (double*)malloc(sizeof(double*)*n*n);
@@ -237,6 +241,8 @@ void GaussianProcessRegressor_StandardScaler(GaussianProcessRegressor *gpr, int 
 
 
 void GaussianProcessRegressor_Free(GaussianProcessRegressor *gpr) {
+  free(gpr->theta);
+  free(gpr->x[0]);
   free(gpr->x);
   free(gpr->y);
   free(gpr->K);
@@ -311,86 +317,87 @@ double **Loadcsv(int *nrow, int *ncol, char *file) {
     }
   }
 
-  /*
-  for(int i=0;i<_nrow;i++) {
-    for(int j=0;j<_ncol;j++) {
-      printf("%lf,", mat[i][j]);
-    }
-    cout << endl;
-  }
-  */
-
   fclose(fp);
 
   return mat;
 }
 
 
-int main(int argc, char *argv[]) {
-  int dim=1, ndat=10, kerneltype=0, ntest=10, nrow_test, nrow_train, ncol_test, ncol_train;
-  double theta[10], **test, **train;
-  char line[256];
-  FILE *fp;
-
+int GaussianProcessRegression(char *input) {
   GaussianProcessRegressor *gpr;
+  FILE *fp;
+  char traincsv[256], testcsv[256], line[256];
+  double **train, **test;
+  int nrow_train, ncol_train, nrow_test, ncol_test;
+  
   gpr = (GaussianProcessRegressor*)malloc(sizeof(GaussianProcessRegressor));
-
   
-  /* Initialize GPR */
-  gpr->kerneltype = kerneltype;
+  // load input file
+  fp = fopen(input,"r");
+  while(fgets(line,256,fp)) {
+    const char *pt = strstr(line,"=");
 
-  train = Loadcsv(&nrow_train, &ncol_train, argv[1]);
-  gpr->dim = ncol_train-1;
-  gpr->ndat = nrow_train; // number of training data
-  
-  test = Loadcsv(&nrow_test, &ncol_test, argv[1]);
-  gpr->npred = nrow_test;
+    if( strstr(line,"kernel") ) { sscanf(pt+1,"%d", &gpr->kerneltype); }
+    else if( strstr(line,"train") ) { sscanf(pt+1,"%s", traincsv); }
+    else if( strstr(line,"test") ) { sscanf(pt+1,"%s", testcsv); } 
+  }
 
-  if(ncol_test-1 != ncol_train-1) {
+  train = Loadcsv(&nrow_train, &ncol_train, traincsv);
+  test = Loadcsv(&nrow_test, &ncol_test, testcsv);
+
+  if(ncol_test != ncol_train-1) {
+    printf("%d,%d\n", ncol_test, ncol_train);
     printf("Dimension of train and test is not match\n");
     return -1;
   }
-  
+
+  gpr->dim = ncol_train-1;
+  gpr->ndat = nrow_train; 
+  gpr->npred = nrow_test;
+
+  if(gpr->kerneltype == 0) { gpr->nparam = 3; }
+  else if(gpr->kerneltype == 1) { gpr->nparam = 2; }
+
   GaussianProcessRegressor_Malloc(gpr);
   
-  printf("%d %d\n",nrow_train, ncol_train);
   for(int i=0;i<nrow_train;i++) {
-    for(int j=0;j<ncol_train;j++) { gpr->x[i][j] = train[i][j]; }
+    for(int j=0;j<ncol_train-1;j++) { gpr->x[i][j] = train[i][j]; }
     gpr->y[i] = train[i][ncol_train-1];
-    // cout << gpr->y[i] << endl;
-
-    printf("train[%d] %p\n", i, &train[i]);
-    // free(train[i]);    
   }
 
   for(int i=0;i<nrow_test;i++) {
-    for(int j=0;j<ncol_train;j++) { gpr->test[i][j] = test[i][j]; }
-    // free(test[i]);
+    for(int j=0;j<ncol_test;j++) { gpr->test[i][j] = test[i][j]; }
   }
-  
+
+  free(train[0]);
   free(train);
+  free(test[0]);
   free(test);
 
-
-  /* Load data */
+  /*
   for(int i=0;i<gpr->ndat;i++) {
-    gpr->x[i][0] = (double)i;
-    gpr->y[i] = sin(gpr->x[i][0]);
+    for(int j=0;j<gpr->dim;j++) {
+      printf("%lf,", gpr->test[i][j]);
+    }
+    printf("\n");
+    // printf("%lf\n", gpr->y[i]);
   }
+  */
 
-
-  /* Make test data */
-  for(int i=0;i<gpr->npred;i++) { gpr->test[i][0] = (double)i+0.5; }
-
-
-  /* Scaling training data */
   GaussianProcessRegressor_StandardScaler(gpr,1);
-  
+
+  /*
+  for(int i=0;i<gpr->ndat;i++) {
+    for(int j=0;j<gpr->dim;j++) {
+      printf("%lf,", gpr->x[i][j]);
+    }
+    printf("%lf\n", gpr->y[i]);
+  }
+  */
 
   if(gpr->kerneltype == 0) {
     /* set parameters for kernel */
     gpr->nparam = 3;
-    gpr->theta = &theta[0];
     gpr->theta[0] = 1;
     gpr->theta[1] = 1;
     gpr->theta[2] = 1;
@@ -408,7 +415,6 @@ int main(int argc, char *argv[]) {
 
     /* set parameters for kernel */
     gpr->nparam = 2;
-    gpr->theta = theta;
     gpr->theta[0] = 1;
     gpr->theta[1] = 1;
     gpr->alpha = 0.1;
@@ -442,9 +448,15 @@ int main(int argc, char *argv[]) {
     for(int i=0;i<gpr->ndat;i++) { printf("%lf, %lf\n", gpr->x[i][0], gpr->y[i]); }
     for(int i=0;i<gpr->npred;i++) { printf("%lf, %lf, %lf\n", gpr->test[i][0], gpr->mu_pred[i], gpr->sigma_pred[i]); }
   }
-
+ 
   GaussianProcessRegressor_Free(gpr);
   free(gpr);
 
+  return 0;
+}
+
+
+int main(int argc, char *argv[]) {
+  GaussianProcessRegression(argv[1]);
   return 0;
 }
