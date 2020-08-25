@@ -57,11 +57,14 @@ double Covfunc_RBF_derivative(double l, int dim, double *x, double *x_prime) {
 void GaussianProcessRegressor_MakeKernelMatrix(GaussianProcessRegressor *gpr) {
   for(int i=0;i<gpr->ndat;i++) {
     for(int j=0;j<gpr->ndat;j++) {
-      if(gpr->kerneltype == 0) { gpr->K[i][j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->x[i], gpr->x[j]) + gpr->theta[2]; }
-      else if(gpr->kerneltype == 1) { gpr->K[i][j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->x[i], gpr->x[j]); }
-
-      /* for diagonal elements */
-      if(i == j) { gpr->K[i][j] += gpr->alpha * gpr->alpha; }
+      if(gpr->kerneltype == 0) {
+        gpr->K[i][j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->x[i], gpr->x[j]);
+        if(i == j) { gpr->K[i][j] += gpr->theta[2]; }
+      }
+      else if(gpr->kerneltype == 1) {
+        gpr->K[i][j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->x[i], gpr->x[j]);
+        if(i == j) { gpr->K[i][j] += gpr->alpha * gpr->alpha; }  
+      }      
     }
   }
 }
@@ -76,13 +79,14 @@ double GaussianProcessRegressor_LogMarginalLikelihood(GaussianProcessRegressor *
   lml_1 = -0.5*log(K.determinant()); 
   lml_2 = -0.5*gpr->ndat*log(2*pi); 
 
+  printf("lml_0 : %17.12lf, lml_1 : %17.12lf, lml_2 : %17.12lf\n", lml_0, lml_1, lml_2);
   return lml_0 + lml_1 + lml_2;
 }
 
 
 void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
-  int maxcycle=1000, n=gpr->ndat, dim=gpr->dim, nparam=gpr->nparam, converged=0;
-  double alpha=0.01, threshold=0.001;
+  int maxcycle=1000000, n=gpr->ndat, dim=gpr->dim, nparam=gpr->nparam, converged=0;
+  double alpha=0.00001, threshold=0.001;
   VectorXd y; // training data
   
   if(gpr->kerneltype == 0) {
@@ -96,30 +100,34 @@ void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
         for(int j=0;j<n;j++) {
           Grad0(i,j) = Covfunc_RBF(gpr->theta[0], dim, gpr->x[i], gpr->x[j]); 
           Grad1(i,j) = gpr->theta[0] * Covfunc_RBF_derivative(gpr->theta[1], dim, gpr->x[i], gpr->x[j]);
-          Grad2(i,j) = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], dim, gpr->x[i], gpr->x[j]) + 1;
+
+          if(i == j) { Grad2(i,j) = gpr->theta[2]; }
+          else { Grad2(i,j) = 0; }
         }
       }
 
       /* Make Kernel matrix  for current parameters */
       GaussianProcessRegressor_MakeKernelMatrix(gpr);
-      K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], n, n);
+      K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], n, n); 
       y = Map<VectorXd>(gpr->y, n);
 
       
       /* calculate gradient */
-      updates[0] = -((K.inverse())*Grad0).trace() + ((K.inverse()*y).transpose())*Grad0*(K.inverse()*y);
-      updates[1] = -((K.inverse())*Grad1).trace() + ((K.inverse()*y).transpose())*Grad1*(K.inverse()*y);
-      updates[2] = -((K.inverse())*Grad2).trace() + ((K.inverse()*y).transpose())*Grad2*(K.inverse()*y);
+      updates[0] = -0.5*((K.inverse())*Grad0).trace() + 0.5*((K.inverse()*y).transpose())*Grad0*(K.inverse()*y);
+      updates[1] = -0.5*((K.inverse())*Grad1).trace() + 0.5*((K.inverse()*y).transpose())*Grad1*(K.inverse()*y);
+      updates[2] = -0.5*((K.inverse())*Grad2).trace() + 0.5*((K.inverse()*y).transpose())*Grad2*(K.inverse()*y);
       
+
+      /* output */
+      printf("\ncycle %d : %lf\n", cycle, GaussianProcessRegressor_LogMarginalLikelihood(gpr));
+      cout << K << endl;
+      printf("theta: %lf, %lf, %lf\n", gpr->theta[0], gpr->theta[1], gpr->theta[2]);
+      printf("theta(log-transformed): %lf, %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1]), log(gpr->theta[2]));
+      printf("update(gradient): %lf, %lf, %lf\n", updates[0], updates[1], updates[2]);
+
 
       /* update parameters */    
       for(int i=0;i<nparam;i++) { gpr->theta[i] += alpha * updates[i]; }
-
-
-      /* output */
-      printf("cycle %d : %lf\n", cycle, GaussianProcessRegressor_LogMarginalLikelihood(gpr));
-      printf("theta(log-transformed): %lf, %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1]), log(gpr->theta[2]));
-      printf("update(gradient): %lf, %lf, %lf\n", updates[0], updates[1], updates[2]);
 
 
       /* converge check */
@@ -163,10 +171,11 @@ void GaussianProcessRegressor_fit(GaussianProcessRegressor *gpr) {
 
 
       /* output */
+      /*
       printf("cycle %d : %lf\n", cycle, GaussianProcessRegressor_LogMarginalLikelihood(gpr));
       printf("theta(log-transformed): %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1]));
       printf("update(gradient): %lf, %lf\n", updates[0], updates[1]);
-
+      */
 
       /* converge check */
       converged = 1;
@@ -258,14 +267,14 @@ void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr) {
   double k_self;
 
   if(gpr->kerneltype == 0) {
-    /*
+    
     for(int i=0;i<gpr->npred;i++) {
       for(int j=0;j<gpr->ndat;j++) { k[j] = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->x[j]) + gpr->theta[2]; }
-      K_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
-      gpr->mu[i] = (k.transpose())*(K.inverse())*y;
-      gpr->var[i] = s - (k.transpose())*(K.inverse())*k;
+      k_self = gpr->theta[0] * Covfunc_RBF(gpr->theta[1], gpr->dim, gpr->test[i], gpr->test[i]);
+      gpr->mu_pred[i] = (k.transpose())*(K.inverse())*y;
+      gpr->sigma_pred[i] = k_self - (k.transpose())*(K.inverse())*k;
     }
-    */
+    
   } else if(gpr->kerneltype == 1) {
 
     for(int i=0;i<gpr->npred;i++) {
@@ -400,17 +409,19 @@ int GaussianProcessRegression(char *input) {
     gpr->nparam = 3;
     gpr->theta[0] = 1;
     gpr->theta[1] = 1;
-    gpr->theta[2] = 1;
+    gpr->theta[2] = 1e-5;
     gpr->alpha = 0;
 
 
     /* Optimize hyper-parameters */
     GaussianProcessRegressor_fit(gpr);
-    
 
-    /* output */
-    printf("%lf, %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1]), log(gpr->theta[2])); // Optinum parameters
+    GaussianProcessRegressor_predict(gpr);
 
+    printf("Optimum hyperparameters : %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optimum parameters
+
+    for(int i=0;i<gpr->ndat;i++) { printf("%lf, %lf\n", gpr->x[i][0], gpr->y[i]); }
+    for(int i=0;i<gpr->npred;i++) { printf("%lf, %lf, %lf\n", gpr->test[i][0], gpr->mu_pred[i], gpr->sigma_pred[i]); }
   } else if(gpr->kerneltype == 1) {
 
     /* set parameters for kernel */
