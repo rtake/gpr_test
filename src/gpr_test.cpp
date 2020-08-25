@@ -261,10 +261,12 @@ void GaussianProcessRegressor_Free(GaussianProcessRegressor *gpr) {
 }
 
 
-void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr) {
+void GaussianProcessRegressor_predict(GaussianProcessRegressor *gpr, double **test) {
   MatrixXd K = Map<Matrix<double,Dynamic,Dynamic,RowMajor>>(&gpr->K[0][0], gpr->ndat, gpr->ndat);
   VectorXd k(gpr->ndat), y = Map<VectorXd>(gpr->y, gpr->ndat);
   double k_self;
+
+  gpr->test = test;
 
   if(gpr->kerneltype == 0) {
     
@@ -332,142 +334,82 @@ double **Loadcsv(int *nrow, int *ncol, char *file) {
 }
 
 
-int GaussianProcessRegression(char *input) {
-  GaussianProcessRegressor *gpr;
+void GaussianProcessRegression(GaussianProcessRegressor *gpr, double **x, double *y, int kerneltype=0) {
   FILE *fp;
-  char traincsv[256], testcsv[256], line[256];
-  double **train, **test;
-  int nrow_train, ncol_train, nrow_test, ncol_test;
+  char line[256];
   
-  gpr = (GaussianProcessRegressor*)malloc(sizeof(GaussianProcessRegressor));
-  
-  // load input file
-  fp = fopen(input,"r");
-  while(fgets(line,256,fp)) {
-    const char *pt = strstr(line,"=");
-
-    if( strstr(line,"kernel") ) { sscanf(pt+1,"%d", &gpr->kerneltype); }
-    else if( strstr(line,"train") ) { sscanf(pt+1,"%s", traincsv); }
-    else if( strstr(line,"test") ) { sscanf(pt+1,"%s", testcsv); } 
-  }
-
-  train = Loadcsv(&nrow_train, &ncol_train, traincsv);
-  test = Loadcsv(&nrow_test, &ncol_test, testcsv);
-
-  if(ncol_test != ncol_train-1) {
-    printf("%d,%d\n", ncol_test, ncol_train);
-    printf("Dimension of train and test is not match\n");
-    return -1;
-  }
-
-  gpr->dim = ncol_train-1;
-  gpr->ndat = nrow_train; 
-  gpr->npred = nrow_test;
-
+  gpr->kerneltype = kerneltype;
   if(gpr->kerneltype == 0) { gpr->nparam = 3; }
   else if(gpr->kerneltype == 1) { gpr->nparam = 2; }
 
   GaussianProcessRegressor_Malloc(gpr);
   
-  for(int i=0;i<nrow_train;i++) {
-    for(int j=0;j<ncol_train-1;j++) { gpr->x[i][j] = train[i][j]; }
-    gpr->y[i] = train[i][ncol_train-1];
+  for(int i=0;i<gpr->ndat;i++) {
+    for(int j=0;j<gpr->dim;j++) { gpr->x[i][j] = x[i][j]; }
+    gpr->y[i] = y[i];
   }
 
-  for(int i=0;i<nrow_test;i++) {
-    for(int j=0;j<ncol_test;j++) { gpr->test[i][j] = test[i][j]; }
+  GaussianProcessRegressor_StandardScaler(gpr,1);
+
+  if(gpr->kerneltype == 0) {
+    /* set parameters for kernel */
+    gpr->theta[0] = 1;
+    gpr->theta[1] = 1;
+    gpr->theta[2] = 1e-5;
+
+
+    /* Optimize hyper-parameters */
+    GaussianProcessRegressor_fit(gpr);
+
+  } else if(gpr->kerneltype == 1) {
+    gpr->theta[0] = 1;
+    gpr->theta[1] = 1;
+    gpr->alpha = 0.1;
+
+    /* Optimize hyper-parameters */
+    GaussianProcessRegressor_fit(gpr);
+
   }
+
+}
+
+
+int main(int argc, char *argv[]) {
+  GaussianProcessRegressor *gpr;
+  double **train, **test, **x, *y;
+  int nrow_train, ncol_train, nrow_test, ncol_test;
+  char csv_train[] = "train.csv", csv_test[] = "test.csv";
+
+  gpr = (GaussianProcessRegressor*)malloc(sizeof(GaussianProcessRegressor));
+  
+  train = Loadcsv(&nrow_train, &ncol_train, csv_train);
+  test = Loadcsv(&nrow_test, &ncol_test, csv_test);
+
+  gpr->ndat = nrow_train;
+  gpr->dim = ncol_train-1;
+
+  x = (double**)malloc(sizeof(double)*(nrow_train));
+  x[0] = (double*)malloc(sizeof(double)*(nrow_train)*(ncol_train-1));
+  for(int i=1;i<nrow_train;i++) { x[i] = x[0] + i*(ncol_train-1); }
+
+  y = (double*)malloc(sizeof(double)*nrow_train);
+
+  for(int i=0;i<nrow_train;i++) {
+    for(int j=0;j<ncol_train-1;j++) { x[i][j] = train[i][j]; }
+    y[i] = train[i][ncol_train-1];
+  }
+
+  GaussianProcessRegression(gpr, x, y, 0);
+
+  gpr->npred = ncol_test;
+  GaussianProcessRegressor_predict(gpr, test);
+
+  GaussianProcessRegressor_Free(gpr);
 
   free(train[0]);
   free(train);
   free(test[0]);
   free(test);
 
-  /*
-  for(int i=0;i<gpr->ndat;i++) {
-    for(int j=0;j<gpr->dim;j++) {
-      printf("%lf,", gpr->test[i][j]);
-    }
-    printf("\n");
-    // printf("%lf\n", gpr->y[i]);
-  }
-  */
-
-  GaussianProcessRegressor_StandardScaler(gpr,1);
-
-  /*
-  for(int i=0;i<gpr->ndat;i++) {
-    for(int j=0;j<gpr->dim;j++) {
-      printf("%lf,", gpr->x[i][j]);
-    }
-    printf("%lf\n", gpr->y[i]);
-  }
-  */
-
-  if(gpr->kerneltype == 0) {
-    /* set parameters for kernel */
-    gpr->nparam = 3;
-    gpr->theta[0] = 1;
-    gpr->theta[1] = 1;
-    gpr->theta[2] = 1e-5;
-    gpr->alpha = 0;
-
-
-    /* Optimize hyper-parameters */
-    GaussianProcessRegressor_fit(gpr);
-
-    GaussianProcessRegressor_predict(gpr);
-
-    printf("Optimum hyperparameters : %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optimum parameters
-
-    for(int i=0;i<gpr->ndat;i++) { printf("%lf, %lf\n", gpr->x[i][0], gpr->y[i]); }
-    for(int i=0;i<gpr->npred;i++) { printf("%lf, %lf, %lf\n", gpr->test[i][0], gpr->mu_pred[i], gpr->sigma_pred[i]); }
-  } else if(gpr->kerneltype == 1) {
-
-    /* set parameters for kernel */
-    gpr->nparam = 2;
-    gpr->theta[0] = 1;
-    gpr->theta[1] = 1;
-    gpr->alpha = 0.1;
-
-
-    /* Optimize hyper-parameters */
-    GaussianProcessRegressor_fit(gpr);
-
-
-    /* Predict mu and sigma for test data */
-    GaussianProcessRegressor_predict(gpr);
-    
-
-    /* output */
-    /*
-    fp = fopen("lml.csv", "w");
-    for(double i=-5;i<=5;i+=0.1) {
-      for(double j=-5;j<=5;j+=0.1) {
-        GaussianProcessRegressor gpr0 = *gpr;
-        gpr0.theta[0] = exp(j); // xaxis
-        gpr0.theta[1] = exp(i); // yaxis
-        GaussianProcessRegressor_MakeKernelMatrix(&gpr0);
-        fprintf(fp,"%lf,%lf,%lf\n", j, i, GaussianProcessRegressor_LogMarginalLikelihood(&gpr0));
-      } 
-    }
-    fclose(fp);
-    */
-
-    printf("Optimum hyperparameters : %lf, %lf\n", log(gpr->theta[0]), log(gpr->theta[1])); // Optimum parameters
-
-    for(int i=0;i<gpr->ndat;i++) { printf("%lf, %lf\n", gpr->x[i][0], gpr->y[i]); }
-    for(int i=0;i<gpr->npred;i++) { printf("%lf, %lf, %lf\n", gpr->test[i][0], gpr->mu_pred[i], gpr->sigma_pred[i]); }
-  }
- 
-  GaussianProcessRegressor_Free(gpr);
-  free(gpr);
-
-  return 0;
-}
-
-
-int main(int argc, char *argv[]) {
-  GaussianProcessRegression(argv[1]);
   return 0;
 }
