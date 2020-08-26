@@ -341,6 +341,15 @@ double **Loadcsv(int *nrow, int *ncol, char *file) {
 
 
 void GaussianProcessRegression(GaussianProcessRegressor *gpr, double **x, double *y, int kerneltype=0) {
+  /*
+  1. load training data(x,y)
+  2. load test data(x_0)
+  3. scaling training data(y)
+  4. regression
+  5. prediction
+  6. scale-back
+  7. free memory 
+  */
 
   /* set kernel type */  
   gpr->kerneltype = kerneltype;
