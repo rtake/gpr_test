@@ -90,19 +90,25 @@ plot_y = gpr.predict(plot_x)
 plot_y = scaler_y.inverse_transform(plot_y)
 
 # For plot
-fig = plt.figure(figsize=(8, 6))
-plt.xlabel('$x0$', fontsize=16)
-plt.ylabel('$x1$', fontsize=16)
+fig = plt.figure(figsize=(4, 3))
+plt.xlabel('$x0$', fontsize=8)
+plt.ylabel('$x1$', fontsize=8)
 # plt.xlim(x0lim)
 # plt.ylim(x1lim)
-plt.tick_params(labelsize=16)
 
 
 # For contour plot
 # """
+
+# plt.plot(X[:,0], X[:,1], 'r.', markersize=3)
+
 plt.plot(xlist[:,0], xlist[:,1], 'r.', markersize=3)
 plt.contourf(plot_x0, plot_x1, plot_y.reshape(gridnum, -1))
-plt.colorbar()
+
+cbar = plt.colorbar()
+cbar.set_label('energy(harteree)')
+plt.tick_params(labelsize=8)
+
 # """
 
 
