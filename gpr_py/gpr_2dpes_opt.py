@@ -9,7 +9,9 @@ from sklearn.preprocessing import StandardScaler
 
 
 # Road data
-csv_file = open("./h2o_2d_1000.csv", "r")
+# csv_file = open("./h2o_2d_1000.csv", "r")
+csv_file = open("./h2o_2d_10.csv", "r")
+
 reader = csv.reader(csv_file)
 reader_np = np.array(list(reader))
 
@@ -86,8 +88,9 @@ x1 = np.arange(x1lim[0], x1lim[1], (x1lim[1]-x1lim[0])/gridnum)
 plot_x0, plot_x1 = np.meshgrid(x0,x1)
 plot_x =  np.array([plot_x0.ravel(), plot_x1.ravel()]).T
 
-plot_y = gpr.predict(plot_x)
+plot_y, sigma = gpr.predict(plot_x, return_std=True)
 plot_y = scaler_y.inverse_transform(plot_y)
+sigma = sigma * scaler_y.scale_
 
 # For plot
 fig = plt.figure(figsize=(4, 3))
@@ -100,13 +103,20 @@ plt.ylabel('$x1$', fontsize=8)
 # For contour plot
 # """
 
-# plt.plot(X[:,0], X[:,1], 'r.', markersize=3)
+plt.plot(X[:,0], X[:,1], 'r.', markersize=3)
 
-plt.plot(xlist[:,0], xlist[:,1], 'r.', markersize=3)
-plt.contourf(plot_x0, plot_x1, plot_y.reshape(gridnum, -1))
+# plt.plot(xlist[:,0], xlist[:,1], 'r.', markersize=3)
+# plt.contourf(plot_x0, plot_x1, plot_y.reshape(gridnum, -1))
+
+
+plt.contourf(plot_x0, plot_x1, sigma.reshape(gridnum, -1))
 
 cbar = plt.colorbar()
-cbar.set_label('energy(harteree)')
+
+# cbar.set_label('energy(harteree)')
+
+cbar.set_label('sigma')
+
 plt.tick_params(labelsize=8)
 
 # """
