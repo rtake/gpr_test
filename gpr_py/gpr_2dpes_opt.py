@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 
 # Road data
 # csv_file = open("./h2o_2d_1000.csv", "r")
-csv_file = open("./h2o_2d_10.csv", "r")
+csv_file = open("./dat/h2o_2d_10.csv", "r")
 
 reader = csv.reader(csv_file)
 reader_np = np.array(list(reader))
@@ -106,12 +106,12 @@ plt.ylabel('$x1$', fontsize=8)
 plt.plot(X[:,0], X[:,1], 'r.', markersize=3)
 
 # plt.plot(xlist[:,0], xlist[:,1], 'r.', markersize=3)
-# plt.contourf(plot_x0, plot_x1, plot_y.reshape(gridnum, -1))
+plt.contourf(plot_x0, plot_x1, plot_y.reshape(gridnum, -1))
 
-
-plt.contourf(plot_x0, plot_x1, sigma.reshape(gridnum, -1))
+# plt.contourf(plot_x0, plot_x1, sigma.reshape(gridnum, -1))
 
 cbar = plt.colorbar()
+
 
 # cbar.set_label('energy(harteree)')
 
@@ -127,5 +127,9 @@ plt.tick_params(labelsize=8)
 ax = fig.add_subplot(111, projection='3d')
 surf = ax.plot_surface(plot_x0, plot_x1, pred_y.reshape(gridnum, -1), cmap='bwr', linewidth=0)
 """
+
+test = gpr.predict(X)
+test = scaler_y.inverse_transform(test)
+print (test)
 
 plt.show()
